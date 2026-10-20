@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use common::{Error, Result};
+use ahdk_core::{Error, Result};
 use regex::Regex;
 
 use crate::scan::{fm_scalar, is_dated, split_frontmatter};

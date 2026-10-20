@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use common::{Error, Result};
+use ahdk_core::{Error, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
