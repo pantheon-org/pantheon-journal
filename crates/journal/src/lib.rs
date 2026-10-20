@@ -7,7 +7,7 @@
 //! the same rules the skill's `validate-journal-entry.sh` enforces. The
 //! bundled skill is embedded at build time and can be installed into agent
 //! directories via the shared
-//! `skill-install` crate. No LLM access is involved. One deliberate exception
+//! `ahdk-install` crate. No LLM access is involved. One deliberate exception
 //! to an otherwise offline toolset: `archive_media` fetches already-discovered
 //! media URLs over HTTP (see that module for why network access is scoped to
 //! just this one command). `status` is a second deliberate exception of a

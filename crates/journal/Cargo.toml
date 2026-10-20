@@ -1,6 +1,6 @@
 [package]
 name = "pantheon-journal"
-version = "0.2.5"
+version = "0.2.6"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -23,8 +23,8 @@ name = "pantheon-journal"
 path = "src/main.rs"
 
 [dependencies]
-skill-install = { workspace = true }
-common = { workspace = true }
+ahdk-install = { workspace = true }
+ahdk-core = { workspace = true }
 regex = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

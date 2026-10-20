@@ -9,6 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::process;
 
+use ahdk_install::agents::all as all_agents;
+use ahdk_install::env::Environment;
+use ahdk_install::install::InstallMode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use journal::archive_media::{self, ArchiveMediaArgs as ArchiveMediaCoreArgs};
 use journal::backfill;
@@ -24,9 +27,6 @@ use journal::status;
 use journal::taxonomy::{Taxonomy, TaxonomySource};
 use journal::taxonomy_sync::{check_append_only, classify_tag, ClassifyConfidence};
 use journal::validate::{self, Outcome};
-use skill_install::agents::all as all_agents;
-use skill_install::env::Environment;
-use skill_install::install::InstallMode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

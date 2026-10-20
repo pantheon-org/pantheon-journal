@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use common::Result;
+use ahdk_core::Result;
 use serde::Serialize;
 
 use crate::scan::Entry;

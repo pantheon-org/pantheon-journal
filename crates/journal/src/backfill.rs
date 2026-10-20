@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use common::{Error, Result};
+use ahdk_core::{Error, Result};
 use regex::Regex;
 
 use crate::scan::{first_h1, is_dated, parse_frontmatter, try_list_markdown};

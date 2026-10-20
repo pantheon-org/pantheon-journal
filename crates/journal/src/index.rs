@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use common::{Error, Result};
+use ahdk_core::{Error, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
