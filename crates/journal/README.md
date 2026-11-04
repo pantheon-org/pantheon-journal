@@ -61,21 +61,6 @@ Steps in full:
    materialises the embedded files and copies (or symlinks) them into the
    detected or selected agent's skills directory.
 
-### Version numbers are not synced
-
-Two version numbers exist for this skill, and they are **deliberately not the
-same number**:
-
-| Version | Where it lives | What it gates |
-| --- | --- | --- |
-| Crate version | [`Cargo.toml`](Cargo.toml) `version` | What `pantheon-journal --version` reports and what a release tag bumps |
-| Plugin version | `skills/documentation/journal-entry-creator/.tekhne/plugin.json` | Toolkit manifest metadata; unused for this distribution path |
-
-This skill is excluded from the release-please sync that keeps `plugin.json`
-versions current, because it ships only via this crate's own release
-process. Don't try to reconcile the two numbers — treat the crate version as
-authoritative for anyone installing via `pantheon-journal skill install`.
-
 ## Other commands
 
 Run `pantheon-journal --help` for the full command list (`new`, `lint`,
