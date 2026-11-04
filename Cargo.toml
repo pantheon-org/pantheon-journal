@@ -14,7 +14,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
 clap = { version = "4", features = ["derive"] }
-ureq = "2"
+ureq = "3"
 url = "2"
 tempfile = "3"
 # The shared Pantheon Agentic Harness Dev Kit crates. A git tag until they are published
