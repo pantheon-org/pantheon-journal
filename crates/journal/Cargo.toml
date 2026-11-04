@@ -23,8 +23,8 @@ name = "pantheon-journal"
 path = "src/main.rs"
 
 [dependencies]
-ahdk-install = { workspace = true }
-ahdk-core = { workspace = true }
+pahdk-install = { workspace = true }
+pahdk-core = { workspace = true }
 regex = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
