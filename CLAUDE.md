@@ -8,7 +8,7 @@ plus the bundled `journal-entry-creator` agent skill. See `README.md` for what i
 - `crates/journal/`: the only workspace member. `src/lib.rs` documents each module; `tests/` holds the integration
   tests (`backfill.rs`, `entries_dir.rs`, `index.rs`, `lint.rs`, `roundtrip.rs`).
 - `journal-entry-creator/`: the skill (`SKILL.md`, `references/`, `evals/`, `scripts/`, and `assets/`, which holds
-  the entry templates in `assets/templates/`, the taxonomy schema in `assets/schemas/` and `assets/taxonomy.default.json`). `crates/journal/build.rs`
+  the entry templates in `assets/templates/`, the entry frontmatter schema and the taxonomy schema in `assets/schemas/`, and `assets/taxonomy.default.json`). `crates/journal/build.rs`
   embeds it in the binary, so a change here changes the binary.
 - `.github/workflows/`: CI. `rust-ci.yml` is the source of truth for what must pass; `audit-skill.yml` validates and
   grades the skill with a released `pantheon-skill-auditor`.
@@ -39,10 +39,12 @@ the "passed" counts.
   Do not skip them.
 - Markdown is linted by rumdl with `.rumdl.toml`. Shell scripts must pass shellcheck.
 - The Rust toolchain version is set in `rust-toolchain.toml`, `mise.toml` and `rust-ci.yml`. Change all three together.
-- The `pahdk-*` dependencies are pinned in the root `Cargo.toml`, to a git tag. Both must share one pin.
+- The `pahdk-*` dependencies are pinned in the root `Cargo.toml`, to a `rev` of the dev-kit's `main` until a tag includes
+  `validate`; move them to the tag then. Both must share one pin.
 - A workflow `run:` block holds at most 15 lines of code; longer logic goes in a script under `.github/scripts/`.
 - Keep the skill's documented behaviour and the CLI in step: `references/compliance.md` and
-  `scripts/validate-journal-entry.sh` describe the same rules `src/validate.rs` enforces.
+  `scripts/validate-journal-entry.sh` describe the same rules `src/validate.rs` enforces. The frontmatter rules live in
+  `assets/schemas/entry-frontmatter.schema.json`, embedded by `validate.rs`; change the schema, not Rust, to change them.
 - State is stored under `$XDG_DATA_HOME/tekhne/journal` (or `~/.local/share/tekhne/journal`). Keep that path.
 - Commands that read entries take `--entries-dir` (default `.`) for a wrapper directory under `--root`/`--dir` that
   holds the `YYYY/MM-Month/DD-Weekday/` tree. Stored `file` paths keep that prefix.
