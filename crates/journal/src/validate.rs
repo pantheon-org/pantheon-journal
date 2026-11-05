@@ -1,5 +1,6 @@
-//! Compliance validation for journal entries, ported from
-//! `scripts/validate-journal-entry.sh`.
+//! Compliance validation for journal entries. It replaced the
+//! `validate-journal-entry.sh` script the skill used to ship and runs the same
+//! checks in the same order, plus the frontmatter schema.
 //!
 //! Past the checks that decide whether there is anything to validate (the file
 //! exists, is named like an entry and has frontmatter), every check runs, in the

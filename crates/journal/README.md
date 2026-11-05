@@ -45,7 +45,7 @@ flowchart LR
 
 Steps in full:
 
-1. **Edit** the skill's `SKILL.md`, `references/`, `scripts/`, or `templates/`
+1. **Edit** the skill's `SKILL.md`, `references/`, or `assets/`
    under `skills/documentation/journal-entry-creator/`. There is nothing to
    edit inside `crates/journal/`.
 2. **Build**: the next `cargo build` picks the change up automatically.

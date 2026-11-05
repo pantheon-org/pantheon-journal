@@ -18,10 +18,10 @@ This skill is a companion to the `journal` CLI and is normally installed by it
 (`pantheon-journal skill install`). Its features split into two tiers:
 
 - **Self-contained** (no binary needed): interactive gathering, entry-type
-  selection, entry authoring, and structural validation via the bundled
-  `scripts/validate-journal-entry.sh`.
-- **CLI-backed** (require the `journal` binary on `PATH`): corpus-wide tag lint
-  (`pantheon-journal lint`) and any other `pantheon-journal` subcommand this skill references.
+  selection and entry authoring.
+- **CLI-backed** (require the `journal` binary on `PATH`): structural validation
+  (`pantheon-journal validate`), corpus-wide tag lint (`pantheon-journal lint`) and any
+  other `pantheon-journal` subcommand this skill references.
 
 Before running any `journal ...` command, confirm the binary is present:
 
@@ -31,7 +31,8 @@ pantheon-journal --version
 
 If it is missing, the skill was installed without its companion CLI. Install the
 `journal` CLI (its release binary, or `cargo install`), then retry. Until then,
-skip the CLI-backed steps; the self-contained workflow still applies.
+skip the CLI-backed steps and tell the user which ones were skipped (an entry written without the
+binary has not been validated); the self-contained workflow still applies.
 
 ## When to Use This Skill
 
@@ -277,7 +278,7 @@ Rules for the proposed description:
 - Follow your team's ticket-writing standard if one exists.
 - If the work touches regulated or personal data, state the constraint and route final sign-off to the appropriate function.
 
-The validator (`validate-journal-entry.sh`) enforces this: when `refinement_ticket` is present in frontmatter, a `## Proposed Ticket Description` section is required. It is a no-op when the field is absent, so other entries are unaffected.
+The validator (`pantheon-journal validate`) enforces this: when `refinement_ticket` is present in frontmatter, a `## Proposed Ticket Description` section is required. It is a no-op when the field is absent, so other entries are unaffected.
 
 ### Ticket Kickoff (Understanding a Ticket Before Starting Work)
 
@@ -296,7 +297,7 @@ Optional, at the author's discretion. Fixed placement: MUST be the H2 immediatel
 Entry is complete when ALL criteria are met:
 
 **Critical violations (NEVER):**
-- Using emojis, bare code blocks (without language), or skipping heading levels. **Enforced:** `validate-journal-entry.sh` fails on any emoji outside a fenced code block and lists the offending line
+- Using emojis, bare code blocks (without language), or skipping heading levels. **Enforced:** `pantheon-journal validate` fails on any emoji outside a fenced code block and lists the offending line
   numbers. Use a bold status word instead (`**Resolved**`, `**Scoped, not yet started**`). Emojis inside fenced code blocks are exempt, so an entry that captures real tool output can reproduce it
   verbatim.
 - Creating entries without reading template schema first
@@ -373,8 +374,8 @@ Entry is complete when ALL criteria are met:
 **Exact commands in sequence:**
 
 ```bash
-# 1. Validate structure
-bash skills/journal-entry-creator/scripts/validate-journal-entry.sh YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
+# 1. Validate structure (lists every problem in one run; add --json for a machine-readable report)
+pantheon-journal validate YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
 
 # 2. Format (only if validation passes)
 npx prettier --write YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
@@ -383,7 +384,7 @@ npx prettier --write YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
 <markdown-linter> YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md --fix
 
 # 4. Re-validate to confirm
-bash skills/journal-entry-creator/scripts/validate-journal-entry.sh YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
+pantheon-journal validate YYYY/MM-Month/DD-Weekday/YYYY-MM-DD-slug.md
 ```
 
 **If validation fails:**
@@ -486,10 +487,6 @@ git commit -m "Add journal entry: [Brief Description] (YYYY-MM-DD)"
 - `ticket-kickoff.yaml` - Issue-tracker ticket kickoff (CoS/AC, gaps, supporting info, work checklist, Proof of Work plan)
 
 Load with paths relative to the skill folder: `assets/templates/[file]`
-
-### Scripts (scripts/)
-
-- `validate-journal-entry.sh` - Compliance validation (run before commit)
 
 ### References (references/)
 

@@ -51,7 +51,7 @@ frontmatter:
       description: >
         Applies to ANY entry type. Jira ticket key this entry relates to (e.g. "TICKET-123"). Set it whenever
         the work documented here maps to a ticket. When present, a '## Jira Comment Draft' section becomes
-        REQUIRED (enforced by validate-journal-entry.sh) and a no-op otherwise, so existing entries are
+        REQUIRED (enforced by pantheon-journal validate) and a no-op otherwise, so existing entries are
         unaffected. See "Jira Comment Draft" in SKILL.md.
       example: "TICKET-123"
 
@@ -62,7 +62,7 @@ frontmatter:
         (e.g. day two of a multi-day investigation). Value is a relative path to the older entry, e.g.
         "../../07-July/30-Thursday/2026-07-30-slug.md". When set, a '## Related Entries' section is REQUIRED immediately
         after the metadata block, and the older entry MUST reciprocally set `continued_by` back to this
-        entry (enforced by validate-journal-entry.sh). See "Continuation Links" in SKILL.md.
+        entry (enforced by pantheon-journal validate). See "Continuation Links" in SKILL.md.
       example: "../../07-July/30-Thursday/2026-07-30-service-migration-spike.md"
 
     - name: continued_by
@@ -71,7 +71,7 @@ frontmatter:
         Applies to ANY entry type. Set on an OLDER entry to link forward to the NEWER entry that
         continues it. Value is a relative path to the newer entry. When set, `status: superseded` and a
         "Superseded — see latest" banner immediately after the H1 are REQUIRED, and the newer entry MUST
-        reciprocally set `continues_from` back to this entry (enforced by validate-journal-entry.sh). See
+        reciprocally set `continues_from` back to this entry (enforced by pantheon-journal validate). See
         "Continuation Links" in SKILL.md.
       example: "../../08-August/01-Saturday/2026-08-01-service-migration-spike-continued.md"
 
@@ -122,10 +122,10 @@ structure:
       Optional, at the author's discretion — not tied to a frontmatter field. Add it when the entry's
       finding or decision needs to be presented to an audience that will not read the full write-up.
       FIXED PLACEMENT: when present, it MUST be the H2 immediately after '## Session Overview', before
-      every other section. Enforced by validate-journal-entry.sh. Keep it short: state the problem, why
+      every other section. Enforced by pantheon-journal validate. Keep it short: state the problem, why
       it is not trivial, the options, and the ask — do not restate detail the sections below cover.
     validation:
-      - "If present, must immediately follow '## Session Overview' (checked by validate-journal-entry.sh)"
+      - "If present, must immediately follow '## Session Overview' (checked by pantheon-journal validate)"
 
   # Context
   - section: context
@@ -250,7 +250,7 @@ structure:
       - Related: [2025-11-15-database-optimization-guide.md]
       - Documentation: https://docs.aws.amazon.com/lambda/connection-pooling
 
-  # Compliance checklist (validator hard-requires this: validate-journal-entry.sh exits 8 if absent)
+  # Compliance checklist (validator hard-requires this: pantheon-journal validate fails if absent)
   - section: compliance
     level: 2
     heading: "## Compliance"
@@ -270,7 +270,7 @@ structure:
       - [x] No credentials, tokens, secrets, or account/org identifiers included verbatim
       - [x] Any code or ticket changes made during this session are disclosed
       - [x] No proprietary third-party source code was inspected or reproduced without confirming license terms
-    validation: "Must be titled exactly '## Compliance' (validate-journal-entry.sh returns exit code 8 if missing)"
+    validation: "Must be titled exactly '## Compliance' (pantheon-journal validate fails if it is missing)"
 
   # Tags (at end of document)
   - section: tags
@@ -309,7 +309,7 @@ formatting:
 
 # Validation
 validation:
-  script: "scripts/validate-journal-entry.sh"
+  command: "pantheon-journal validate"
   required_checks:
     - "Filename matches date in frontmatter"
     - "Single H1 heading"

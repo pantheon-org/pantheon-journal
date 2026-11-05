@@ -305,7 +305,7 @@ structure:
       - Updated runbook: https://wiki.example.com/lambda-scaling
       - Related incident: [2025-01-15-lambda-memory-issue.md]
 
-  # Compliance checklist (validator hard-requires this: validate-journal-entry.sh exits 8 if absent)
+  # Compliance checklist (validator hard-requires this: pantheon-journal validate fails if absent)
   - section: compliance
     level: 2
     heading: "## Compliance"
@@ -325,7 +325,7 @@ structure:
       - [x] No credentials, tokens, secrets, or account/org identifiers included verbatim
       - [x] Any code or ticket changes made during this session are disclosed
       - [x] No proprietary third-party source code was inspected or reproduced without confirming license terms
-    validation: "Must be titled exactly '## Compliance' (validate-journal-entry.sh returns exit code 8 if missing)"
+    validation: "Must be titled exactly '## Compliance' (pantheon-journal validate fails if it is missing)"
 
 # Troubleshooting-specific validation
 validation:
