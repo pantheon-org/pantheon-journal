@@ -1,7 +1,7 @@
 //! Build script that embeds the canonical companion skill tree into the
 //! binary so a downloaded `journal` is self-contained.
 //!
-//! It walks the canonical `journal-entry-creator/`
+//! It walks the canonical `skills/journal-entry-creator/`
 //! directory (relative to the workspace, never a copy committed inside this
 //! crate) and generates `$OUT_DIR/embedded_skill.rs`, a table of
 //! `(relative-path, &'static [u8])` entries backed by `include_bytes!`. The
@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     // The canonical, single-source-of-truth skill lives two levels up in
-    // `journal-entry-creator/`. We embed from there rather than duplicating the tree.
+    // `skills/journal-entry-creator/`. We embed from there rather than duplicating the tree.
     let skill_root = manifest_dir
-        .join("../../journal-entry-creator")
+        .join("../../skills/journal-entry-creator")
         .canonicalize()
         .expect("canonical skill directory must exist at build time");
 
