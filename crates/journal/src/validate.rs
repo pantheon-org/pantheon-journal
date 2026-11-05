@@ -4,11 +4,16 @@
 //! The checks run in the same order the shell script uses and stop at the first
 //! failure: filename date and lowercase slug, a single H1, the required
 //! sections, code fences carrying a language, headings free of trailing
-//! punctuation, well-formed tags, an H1 ending in the long date, and the
-//! `## Proposed Ticket Description` section when the frontmatter names a
-//! `refinement_ticket`. Two checks the shell script implies but does not run
-//! are added here at the task's request: frontmatter must be present, and the
-//! frontmatter `date` must match the filename date (triple-sync).
+//! punctuation, well-formed tags, an H1 ending in the long date, and then the
+//! checks that apply only when the frontmatter asks for them: the
+//! `## Proposed Ticket Description` section for a `refinement_ticket`,
+//! reciprocal `continues_from`/`continued_by` links, the five kickoff sections
+//! for a `kickoff_ticket`, the `## Jira Comment Draft` section for a
+//! `jira_ticket`, and `## Executive Summary` placement when that section is
+//! present. Emojis are rejected outside fenced code blocks. Two checks the
+//! shell script implies but does not run are added here at the task's request:
+//! frontmatter must be present, and the frontmatter `date` must match the
+//! filename date (triple-sync).
 //!
 //! Files under a `.templates` directory, or not inside a `YYYY/` directory, are
 //! skipped, exactly as the shell script skips them.
@@ -79,6 +84,28 @@ pub enum Violation {
         /// The missing section's heading.
         section: &'static str,
     },
+    /// `continues_from` names a file that does not exist.
+    ContinuesFromMissing(String),
+    /// The `continues_from` target does not link back through `continued_by`.
+    NotLinkedBack {
+        /// The `continues_from` value from the frontmatter.
+        target: String,
+    },
+    /// `continues_from` is set but there is no `## Related Entries` section.
+    MissingRelatedEntries,
+    /// `continued_by` names a file that does not exist.
+    ContinuedByMissing(String),
+    /// `continued_by` is set but there is no `> **Superseded` banner.
+    MissingSupersededBanner,
+    /// `## Executive Summary` is not the H2 right after `## Session Overview`.
+    ExecutiveSummaryPlacement {
+        /// The H2 that follows `## Session Overview` instead (empty if none).
+        found: String,
+    },
+    /// One or more lines outside fenced code blocks contain an emoji.
+    Emoji(Vec<usize>),
+    /// `jira_ticket` is set but there is no `## Jira Comment Draft` section.
+    MissingJiraCommentDraft(String),
 }
 
 impl std::fmt::Display for Violation {
@@ -131,6 +158,37 @@ impl std::fmt::Display for Violation {
             Violation::MissingKickoffSection { ticket, section } => write!(
                 f,
                 "kickoff_ticket ({ticket}) is set but there is no '{section}' section"
+            ),
+            Violation::ContinuesFromMissing(target) => {
+                write!(f, "continues_from target does not exist: {target}")
+            }
+            Violation::NotLinkedBack { target } => write!(
+                f,
+                "continues_from target ({target}) does not link back to this entry via continued_by"
+            ),
+            Violation::MissingRelatedEntries => write!(
+                f,
+                "continues_from is set but there is no '## Related Entries' section"
+            ),
+            Violation::ContinuedByMissing(target) => {
+                write!(f, "continued_by target does not exist: {target}")
+            }
+            Violation::MissingSupersededBanner => write!(
+                f,
+                "continued_by is set but there is no 'Superseded - see latest' banner after the H1"
+            ),
+            Violation::ExecutiveSummaryPlacement { found } => write!(
+                f,
+                "'## Executive Summary' must immediately follow '## Session Overview' (found '{found}' instead)"
+            ),
+            Violation::Emoji(lines) => write!(
+                f,
+                "found emoji(s) at line(s): {} (emojis are banned in journal entries outside fenced code blocks)",
+                join_lines(lines)
+            ),
+            Violation::MissingJiraCommentDraft(ticket) => write!(
+                f,
+                "jira_ticket ({ticket}) is set but there is no '## Jira Comment Draft' section"
             ),
         }
     }
@@ -248,6 +306,8 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
         }
     }
 
+    check_continuation_links(path, &content, &scan)?;
+
     if let Some(ticket) = frontmatter_field(&content, "kickoff_ticket") {
         if !ticket.is_empty() {
             for section in KICKOFF_SECTIONS {
@@ -258,7 +318,96 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
         }
     }
 
+    check_executive_summary_placement(&scan)?;
+
+    let emoji_lines = scan.emoji_lines();
+    if !emoji_lines.is_empty() {
+        return Err(Violation::Emoji(emoji_lines));
+    }
+
+    if let Some(ticket) = frontmatter_field(&content, "jira_ticket") {
+        if !ticket.is_empty()
+            && !scan
+                .outside
+                .iter()
+                .any(|l| l.text == "## Jira Comment Draft")
+        {
+            return Err(Violation::MissingJiraCommentDraft(ticket));
+        }
+    }
+
     Ok(Outcome::Validated)
+}
+
+/// Reciprocal `continues_from` / `continued_by` links across dated entries.
+///
+/// A no-op for an entry that sets neither field. `continues_from` must name an
+/// existing entry that points back through its own `continued_by`, and the
+/// entry needs a `## Related Entries` section. `continued_by` must name an
+/// existing entry, and the entry needs a `> **Superseded` banner.
+fn check_continuation_links(path: &Path, content: &str, scan: &Scan) -> Result<(), Violation> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+
+    if let Some(from) = frontmatter_field(content, "continues_from").filter(|v| !v.is_empty()) {
+        let Some(target) = resolve_file(dir, &from) else {
+            return Err(Violation::ContinuesFromMissing(from));
+        };
+        let target_dir = target.parent().unwrap_or_else(|| Path::new("."));
+        let links_back = std::fs::read_to_string(&target)
+            .ok()
+            .and_then(|t| frontmatter_field(&t, "continued_by"))
+            .filter(|v| !v.is_empty())
+            .and_then(|back| resolve_file(target_dir, &back))
+            .is_some_and(|back| Some(back) == path.canonicalize().ok());
+        if !links_back {
+            return Err(Violation::NotLinkedBack { target: from });
+        }
+        if !scan.outside.iter().any(|l| l.text == "## Related Entries") {
+            return Err(Violation::MissingRelatedEntries);
+        }
+    }
+
+    if let Some(by) = frontmatter_field(content, "continued_by").filter(|v| !v.is_empty()) {
+        if resolve_file(dir, &by).is_none() {
+            return Err(Violation::ContinuedByMissing(by));
+        }
+        if !content.lines().any(|l| l.starts_with("> **Superseded")) {
+            return Err(Violation::MissingSupersededBanner);
+        }
+    }
+
+    Ok(())
+}
+
+/// `rel` resolved against `base`, when it names an existing file.
+fn resolve_file(base: &Path, rel: &str) -> Option<PathBuf> {
+    base.join(rel).canonicalize().ok().filter(|p| p.is_file())
+}
+
+/// When the entry has `## Executive Summary`, it must be the H2 that comes
+/// right after `## Session Overview`, so a reader finds it in the same place
+/// in every entry.
+fn check_executive_summary_placement(scan: &Scan) -> Result<(), Violation> {
+    if !scan
+        .outside
+        .iter()
+        .any(|l| l.text == "## Executive Summary")
+    {
+        return Ok(());
+    }
+    let found = scan
+        .outside
+        .iter()
+        .skip_while(|l| l.text != "## Session Overview")
+        .skip(1)
+        .find(|l| l.text.starts_with("## "))
+        .map(|l| l.text.clone())
+        .unwrap_or_default();
+    if found == "## Executive Summary" {
+        Ok(())
+    } else {
+        Err(Violation::ExecutiveSummaryPlacement { found })
+    }
 }
 
 /// One source line with its 1-based number, kept for error reporting.
@@ -304,6 +453,17 @@ impl Scan {
             outside,
             bad_fences,
         }
+    }
+
+    /// Line numbers (in the original file) of lines outside fenced code blocks
+    /// that contain an emoji. Inside a fence they are legal, so an entry that
+    /// captures real tool output can reproduce it verbatim.
+    fn emoji_lines(&self) -> Vec<usize> {
+        self.outside
+            .iter()
+            .filter(|l| emoji_re().is_match(&l.text))
+            .map(|l| l.number)
+            .collect()
     }
 
     /// Line numbers of headings ending in `. : ; ! ?`.
@@ -413,6 +573,17 @@ fn year_dir_re() -> &'static Regex {
 fn filename_date_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"^([0-9]{4}-[0-9]{2}-[0-9]{2})").unwrap())
+}
+
+/// Pictographs (1F000-1FAFF), miscellaneous symbols and dingbats (2600-27BF),
+/// arrows and miscellaneous symbols (2B00-2BFF) and the variation selector
+/// (FE0F). Plain arrows (2190-21FF) and the em dash are punctuation, not
+/// decoration, so they are deliberately not matched.
+fn emoji_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}]").unwrap()
+    })
 }
 
 fn tag_token_re() -> &'static Regex {
@@ -593,5 +764,191 @@ mod tests {
         );
         let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
         assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    fn with_section_after_overview(extra: &str) -> String {
+        GOOD.replace("## Compliance", &format!("{extra}\n\n## Compliance"))
+    }
+
+    #[test]
+    fn executive_summary_right_after_overview_validates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace(
+            "## Session Overview\n\nText.\n",
+            "## Session Overview\n\nText.\n\n## Executive Summary\n\nText.\n\n## Context\n\nText.\n",
+        );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn executive_summary_elsewhere_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace(
+            "## Session Overview\n\nText.\n",
+            "## Session Overview\n\nText.\n\n## Context\n\nText.\n\n## Executive Summary\n\nText.\n",
+        );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(
+            validate(&path),
+            Err(Violation::ExecutiveSummaryPlacement {
+                found: "## Context".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn emoji_in_prose_rejected_with_its_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("Text.\n\n## Compliance", "Done \u{2705}\n\n## Compliance");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let line = body.lines().position(|l| l.contains('\u{2705}')).unwrap() + 1;
+        assert_eq!(validate(&path), Err(Violation::Emoji(vec![line])));
+    }
+
+    #[test]
+    fn emoji_inside_a_fenced_block_is_allowed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = with_section_after_overview("## Output\n\n```text\n\u{2705} passed\n```");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn arrows_and_em_dashes_are_not_emoji() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace(
+            "Text.\n\n## Compliance",
+            "A \u{2192} B \u{2014} done.\n\n## Compliance",
+        );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn jira_ticket_without_comment_draft_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace(
+            "date: 2026-07-22\n",
+            "date: 2026-07-22\njira_ticket: TICKET-1\n",
+        );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(
+            validate(&path),
+            Err(Violation::MissingJiraCommentDraft("TICKET-1".to_string()))
+        );
+    }
+
+    #[test]
+    fn jira_ticket_with_comment_draft_validates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD
+            .replace(
+                "date: 2026-07-22\n",
+                "date: 2026-07-22\njira_ticket: TICKET-1\n",
+            )
+            .replace(
+                "## Compliance",
+                "## Jira Comment Draft\n\nText.\n\n## Compliance",
+            );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    /// Two dated entries linked in both directions, as the skill documents.
+    fn continuation_pair(dir: &Path) -> (PathBuf, PathBuf) {
+        let first = GOOD
+            .replace(
+                "date: 2026-07-22\n",
+                "date: 2026-07-22\ncontinued_by: ../23/2026-07-23-next.md\n",
+            )
+            .replace(
+                "# Example - July 22, 2026\n",
+                "# Example - July 22, 2026\n\n> **Superseded - see latest:** the next entry.\n",
+            );
+        let second = GOOD
+            .replace(
+                "date: 2026-07-22\n",
+                "date: 2026-07-23\ncontinues_from: ../22/2026-07-22-example.md\n",
+            )
+            .replace("July 22, 2026", "July 23, 2026")
+            .replace(
+                "## Compliance",
+                "## Related Entries\n\nText.\n\n## Compliance",
+            );
+        (
+            write(dir, "2026/07/22/2026-07-22-example.md", &first),
+            write(dir, "2026/07/23/2026-07-23-next.md", &second),
+        )
+    }
+
+    #[test]
+    fn a_reciprocal_continuation_pair_validates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (first, second) = continuation_pair(tmp.path());
+        assert_eq!(validate(&first), Ok(Outcome::Validated));
+        assert_eq!(validate(&second), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn continues_from_a_missing_file_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, second) = continuation_pair(tmp.path());
+        std::fs::remove_file(tmp.path().join("2026/07/22/2026-07-22-example.md")).unwrap();
+        assert!(matches!(
+            validate(&second),
+            Err(Violation::ContinuesFromMissing(_))
+        ));
+    }
+
+    #[test]
+    fn continues_from_without_a_back_link_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (first, second) = continuation_pair(tmp.path());
+        let text = std::fs::read_to_string(&first).unwrap();
+        let without = text
+            .lines()
+            .filter(|l| !l.starts_with("continued_by:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&first, without).unwrap();
+        assert!(matches!(
+            validate(&second),
+            Err(Violation::NotLinkedBack { .. })
+        ));
+    }
+
+    #[test]
+    fn continues_from_without_related_entries_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, second) = continuation_pair(tmp.path());
+        let text = std::fs::read_to_string(&second).unwrap();
+        std::fs::write(&second, text.replace("## Related Entries\n\nText.\n\n", "")).unwrap();
+        assert_eq!(validate(&second), Err(Violation::MissingRelatedEntries));
+    }
+
+    #[test]
+    fn continued_by_a_missing_file_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (first, second) = continuation_pair(tmp.path());
+        std::fs::remove_file(second).unwrap();
+        assert!(matches!(
+            validate(&first),
+            Err(Violation::ContinuedByMissing(_))
+        ));
+    }
+
+    #[test]
+    fn continued_by_without_a_superseded_banner_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (first, _) = continuation_pair(tmp.path());
+        let text = std::fs::read_to_string(&first).unwrap();
+        let without = text
+            .lines()
+            .filter(|l| !l.starts_with("> **Superseded"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&first, without).unwrap();
+        assert_eq!(validate(&first), Err(Violation::MissingSupersededBanner));
     }
 }
