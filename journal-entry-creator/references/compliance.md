@@ -9,12 +9,11 @@ Quick automation (recommended)
 - Format: `npx prettier --write path/to/entry.md`
 - Lint: run the repo's markdown linter on `path/to/entry.md`
 - Validator: `pantheon-journal validate path/to/entry.md` lists every problem in one run; add `--json` for the result and each issue with its location. It checks the frontmatter against `assets/schemas/entry-frontmatter.schema.json` (required: `title`, `date` as YYYY-MM-DD, non-empty `tags`; `status` is `draft`, `published` or `superseded`; other fields are allowed) and then the checks below.
-- Legacy validator: `bash scripts/validate-journal-entry.sh path/to/entry.md` (accepts multiple files). It stops at the first failure and does not check the frontmatter schema.
 
 Required tools
 
 - Node.js + `npx` (for Prettier and the repo's markdown linter)
-- `bash`, `perl`, `rg` (ripgrep), and GNU awk (or `gawk`) for the repository validator
+- The `pantheon-journal` binary on `PATH`, for the validator
 
 YAML frontmatter (standardized)
 
@@ -66,7 +65,7 @@ Checklist (run for every new or updated entry)
 
 ## Compliance Section
 
-Every dated, non-template entry MUST include a `## Compliance` section (validate-journal-entry.sh returns exit code 8 if it's missing — this applies regardless of entry type). It is a self-assessed
+Every dated, non-template entry MUST include a `## Compliance` section (`pantheon-journal validate` fails if it's missing — this applies regardless of entry type). It is a self-assessed
 checklist, placed near the end of the entry (conventionally just before `## Tags`), using GitHub-flavored checkboxes:
 
 ```markdown
@@ -94,29 +93,30 @@ Common validator failures & fixes
 - `Duplicate headings` or `multiple blank lines`: remove the duplicate section or extra blank lines.
 - `Filename/location mismatch`: move or rename the file so the path and filename date match the H1 date.
 
-`validate-journal-entry.sh` exit codes (non-zero = failed; each check is a no-op when its triggering frontmatter field is absent, so it never fires for entries that don't use the feature)
+`pantheon-journal validate` prints one line per finding and exits 0 when the entry is valid (or is not a journal entry: a template, or a file outside a `YYYY/` tree) and 1 when it found anything. It lists every finding in one run. With `--json` it prints `{file, result, issues}`, where `result` is `valid`, `skipped` or `invalid` and each issue has a `location` and a `message`. Each check below that depends on a frontmatter field is a no-op when the field is absent, so it never fires for entries that don't use the feature.
 
-| Exit | Meaning | Fix |
-| ---- | ------- | --- |
-| 2 | Usage error / gawk missing | Pass at least one file; install `gawk` |
-| 3 | File not found | Check the path |
-| 4 | Not exactly one H1 | Ensure a single `# Title - Month D, YYYY` heading |
-| 5 | Filename missing `YYYY-MM-DD` prefix | Rename the file |
-| 7-9 | Missing `## Session Overview` / `## Compliance` / `## Tags` | Add the missing section |
-| 10-11 | Bad filename slug or code fence without a language specifier | Lowercase the slug; add a language to the fence |
-| 11 | Heading with trailing punctuation | Remove the trailing `.`/`:`/`;`/`!`/`?` |
-| 12-14 | Tags section empty, no tokens, or non-conforming | Match tags to the frontmatter array; lowercase, hyphenated |
-| 15 | H1 date does not match filename date | Reformat the H1 date to `Month D, YYYY` |
-| 16 | `refinement_ticket` set but no `## Proposed Ticket Description` | Add the section (see Proposed Ticket Description in SKILL.md) |
-| 17 | `continues_from` target file does not exist | Fix the relative path |
-| 18 | Target does not reciprocally set `continued_by` back to this file | Set `continued_by` on the older entry |
-| 19 | `continues_from` set but no `## Related Entries` section | Add the section (see Continuation Links in SKILL.md) |
-| 20 | `continued_by` target file does not exist | Fix the relative path |
-| 21 | `continued_by` set but no "Superseded" banner after the H1 | Add the banner (see Continuation Links in SKILL.md) |
-| 22 | `kickoff_ticket` set but a required section is missing | Add all five sections (see Ticket Kickoff in SKILL.md) |
-| 23 | `## Executive Summary` present but not immediately after `## Session Overview` | Move it to directly follow `## Session Overview` |
-| 24 | Emoji found outside a fenced code block | Remove it; use bold plain text instead (e.g. `**Resolved**`) |
-| 25 | `jira_ticket` set but no `## Jira Comment Draft` | Add the section (see Jira Comment Draft below) |
+| Finding | Fix |
+| ------- | --- |
+| File not found | Check the path |
+| Filename does not start with `YYYY-MM-DD`, or the slug has uppercase letters | Rename the file; lowercase the slug |
+| No YAML frontmatter, or it breaks the schema (missing `title`, `date` or `tags`; `date` not `YYYY-MM-DD`; `status` not `draft`, `published` or `superseded`) | Fix the frontmatter; the message names the field |
+| Not exactly one H1 | Ensure a single `# Title - Month D, YYYY` heading |
+| Missing `## Session Overview`, `## Compliance` or `## Tags` | Add the missing section |
+| Code fence without a language specifier | Add a language to the opening fence |
+| Heading with trailing punctuation | Remove the trailing `.`/`:`/`;`/`!`/`?` |
+| `## Tags` empty, no tokens, or non-conforming tags | Match tags to the frontmatter array; lowercase, hyphenated |
+| H1 date does not match the filename date | Reformat the H1 date to `Month D, YYYY` |
+| Frontmatter `date` does not match the filename date | Make the two dates agree |
+| `refinement_ticket` set but no `## Proposed Ticket Description` | Add the section (see Proposed Ticket Description in SKILL.md) |
+| `continues_from` target file does not exist | Fix the relative path |
+| `continues_from` target does not reciprocally set `continued_by` back to this file | Set `continued_by` on the older entry |
+| `continues_from` set but no `## Related Entries` section | Add the section (see Continuation Links in SKILL.md) |
+| `continued_by` target file does not exist | Fix the relative path |
+| `continued_by` set but no "Superseded" banner after the H1 | Add the banner (see Continuation Links in SKILL.md) |
+| `kickoff_ticket` set but a required section is missing | Add all five sections (see Ticket Kickoff in SKILL.md) |
+| `## Executive Summary` present but not immediately after `## Session Overview` | Move it to directly follow `## Session Overview` |
+| Emoji found outside a fenced code block | Remove it; use bold plain text instead (e.g. `**Resolved**`) |
+| `jira_ticket` set but no `## Jira Comment Draft` | Add the section (see Jira Comment Draft below) |
 
 ## Ticket Kickoff Rules
 

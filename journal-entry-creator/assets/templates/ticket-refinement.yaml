@@ -113,7 +113,7 @@ structure:
     required: true
     description: >
       The ready-to-paste, amended ticket content — the sole deliverable of a refinement session. REQUIRED
-      whenever frontmatter sets refinement_ticket (enforced by validate-journal-entry.sh). It MUST be a single
+      whenever frontmatter sets refinement_ticket (enforced by pantheon-journal validate). It MUST be a single
       fenced code block with a language specifier (```markdown), so it copies verbatim into the tracker and its
       inner headings are not parsed as document headings (keeps the single-H1 rule intact). Use a 4-backtick
       outer fence (````markdown) if the ticket content itself contains 3-backtick code blocks. It is a DRAFT:
@@ -179,7 +179,7 @@ structure:
       - Incident: [INCIDENT-456](https://tracker.example.com/browse/INCIDENT-456)
       ````
     validation:
-      - "Required if frontmatter sets refinement_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets refinement_ticket (checked by pantheon-journal validate)"
       - "Must be a fenced code block with a language specifier so it is copy-pasteable and does not add H1/H2 headings"
       - "Never applied to the tracker from this skill; applying it is a separate, explicitly confirmed step"
 
@@ -213,7 +213,7 @@ structure:
     required: true
     description: "Links (ticket, parent incident, repo, key files) and any decisions or open questions carried forward"
 
-  # Compliance checklist (validator hard-requires this: validate-journal-entry.sh exits 8 if absent)
+  # Compliance checklist (validator hard-requires this: pantheon-journal validate fails if absent)
   - section: compliance
     level: 2
     heading: "## Compliance"
@@ -233,7 +233,7 @@ structure:
       - [x] No credentials, tokens, secrets, or account/org identifiers included verbatim
       - [x] Any code or ticket changes made during this session are disclosed
       - [x] No proprietary third-party source code was inspected or reproduced without confirming license terms
-    validation: "Must be titled exactly '## Compliance' (validate-journal-entry.sh returns exit code 8 if missing)"
+    validation: "Must be titled exactly '## Compliance' (pantheon-journal validate fails if it is missing)"
 
   # Tags (at end of document)
   - section: tags
