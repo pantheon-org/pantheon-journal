@@ -37,8 +37,9 @@ use crate::date::Date;
 
 /// The embedded frontmatter schema, shipped with the skill so the skill
 /// documents it and the tool enforces it from one file.
-const SCHEMA: &str =
-    include_str!("../../../journal-entry-creator/assets/schemas/entry-frontmatter.schema.json");
+const SCHEMA: &str = include_str!(
+    "../../../skills/journal-entry-creator/assets/schemas/entry-frontmatter.schema.json"
+);
 
 /// The result of validating a file that is subject to the checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

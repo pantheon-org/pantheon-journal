@@ -7,7 +7,7 @@ plus the bundled `journal-entry-creator` agent skill. See `README.md` for what i
 
 - `crates/journal/`: the only workspace member. `src/lib.rs` documents each module; `tests/` holds the integration
   tests (`backfill.rs`, `entries_dir.rs`, `index.rs`, `lint.rs`, `roundtrip.rs`).
-- `journal-entry-creator/`: the skill (`SKILL.md`, `references/`, `evals/` and `assets/`, which holds
+- `skills/journal-entry-creator/`: the skill (`SKILL.md`, `references/`, `evals/` and `assets/`, which holds
   the entry templates in `assets/templates/`, the entry frontmatter schema and the taxonomy schema in `assets/schemas/`, and `assets/taxonomy.default.json`). `crates/journal/build.rs`
   embeds it in the binary, so a change here changes the binary.
 - `.github/workflows/`: CI. `rust-ci.yml` is the source of truth for what must pass; `audit-skill.yml` validates and

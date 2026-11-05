@@ -1,21 +1,21 @@
 # pantheon-journal
 
 Create and validate structured journal entries. This crate also bundles the
-`documentation/journal-entry-creator` skill and can install it into any
+`journal-entry-creator` skill and can install it into any
 supported agent's skills directory.
 
 ## Updating the bundled skill
 
 The skill is **not** vendored into this crate. `build.rs` embeds it straight
 from the canonical tree at
-[`skills/documentation/journal-entry-creator/`](../../skills/documentation/journal-entry-creator/)
+[`skills/journal-entry-creator/`](../../skills/journal-entry-creator/)
 at compile time, via `include_bytes!`. Edit the skill there; this crate has no
 copy to keep in sync.
 
 ```mermaid
 flowchart LR
     subgraph edit["1. Edit"]
-        A["skills/documentation/journal-entry-creator/**"]
+        A["skills/journal-entry-creator/**"]
     end
 
     subgraph build["2. Build (automatic)"]
@@ -46,7 +46,7 @@ flowchart LR
 Steps in full:
 
 1. **Edit** the skill's `SKILL.md`, `references/`, or `assets/`
-   under `skills/documentation/journal-entry-creator/`. There is nothing to
+   under `skills/journal-entry-creator/`. There is nothing to
    edit inside `crates/journal/`.
 2. **Build**: the next `cargo build` picks the change up automatically.
    `build.rs` emits `cargo:rerun-if-changed` for every embedded file and for
