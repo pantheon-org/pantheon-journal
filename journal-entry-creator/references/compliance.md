@@ -8,7 +8,8 @@ Quick automation (recommended)
 
 - Format: `npx prettier --write path/to/entry.md`
 - Lint: run the repo's markdown linter on `path/to/entry.md`
-- Validator: `bash scripts/validate-journal-entry.sh path/to/entry.md` (accepts multiple files)
+- Validator: `pantheon-journal validate path/to/entry.md` lists every problem in one run; add `--json` for the result and each issue with its location. It checks the frontmatter against `assets/schemas/entry-frontmatter.schema.json` (required: `title`, `date` as YYYY-MM-DD, non-empty `tags`; `status` is `draft`, `published` or `superseded`; other fields are allowed) and then the checks below.
+- Legacy validator: `bash scripts/validate-journal-entry.sh path/to/entry.md` (accepts multiple files). It stops at the first failure and does not check the frontmatter schema.
 
 Required tools
 

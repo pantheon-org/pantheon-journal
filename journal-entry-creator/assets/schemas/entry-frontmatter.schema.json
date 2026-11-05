@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pantheon-org.github.io/pantheon-journal/journal-entry-creator/entry-frontmatter.schema.json",
+  "title": "Journal entry frontmatter",
+  "description": "The YAML frontmatter every journal entry carries. Only the fields the tool cannot do without are required; the rest are typed when present. Extra fields are allowed so a consuming repository can add its own.",
+  "type": "object",
+  "required": ["title", "date", "tags"],
+  "additionalProperties": true,
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The entry title."
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "The entry date as YYYY-MM-DD. Must match the date in the filename."
+    },
+    "authors": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "status": {
+      "enum": ["draft", "published", "superseded"],
+      "description": "superseded is set on the older entry of a continuation pair."
+    },
+    "source": {
+      "type": "string",
+      "description": "URL of the article or tutorial an entry summarises."
+    },
+    "refinement_ticket": {
+      "type": "string",
+      "description": "Requires a '## Proposed Ticket Description' section."
+    },
+    "kickoff_ticket": {
+      "type": "string",
+      "description": "Requires the five kickoff sections."
+    },
+    "jira_ticket": {
+      "type": "string",
+      "description": "Requires a '## Jira Comment Draft' section."
+    },
+    "continues_from": {
+      "type": "string",
+      "description": "Relative path of the earlier entry. Requires a '## Related Entries' section."
+    },
+    "continued_by": {
+      "type": "string",
+      "description": "Relative path of the later entry. Requires a 'Superseded' banner."
+    }
+  }
+}

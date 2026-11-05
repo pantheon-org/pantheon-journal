@@ -52,6 +52,9 @@ enum Command {
     Validate {
         /// Path to the entry markdown file.
         file: String,
+        /// Machine-readable output: the result and every issue found.
+        #[arg(long)]
+        json: bool,
     },
     /// Lint corpus tags against the taxonomy (advisory).
     Lint(LintArgs),
@@ -356,7 +359,7 @@ fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
         Command::New(args) => run_new(args),
-        Command::Validate { file } => run_validate(&file),
+        Command::Validate { file, json } => run_validate(&file, json),
         Command::Lint(args) => run_lint(args),
         Command::Index(args) => run_index(args),
         Command::KbIndex(args) => run_kb_index(args),
@@ -411,9 +414,22 @@ fn run_new(args: NewArgs) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn run_validate(file: &str) -> std::result::Result<(), String> {
+fn run_validate(file: &str, json: bool) -> std::result::Result<(), String> {
     let path = PathBuf::from(file);
-    match validate::validate(&path) {
+    let outcome = validate::validate_all(&path);
+
+    if json {
+        let report = validate::Report::new(&path, &outcome);
+        let text = serde_json::to_string_pretty(&report)
+            .map_err(|e| format!("cannot serialise report: {e}"))?;
+        println!("{text}");
+        if outcome.is_err() {
+            process::exit(1);
+        }
+        return Ok(());
+    }
+
+    match outcome {
         Ok(Outcome::Validated) => {
             println!("OK: {} passes compliance checks", path.display());
             Ok(())
@@ -425,7 +441,11 @@ fn run_validate(file: &str) -> std::result::Result<(), String> {
             );
             Ok(())
         }
-        Err(violation) => Err(format!("{}: {violation}", path.display())),
+        Err(found) => Err(found
+            .iter()
+            .map(|violation| format!("{}: {violation}", path.display()))
+            .collect::<Vec<_>>()
+            .join("\n")),
     }
 }
 

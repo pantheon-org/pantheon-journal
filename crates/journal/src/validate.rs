@@ -1,8 +1,13 @@
 //! Compliance validation for journal entries, ported from
 //! `scripts/validate-journal-entry.sh`.
 //!
-//! The checks run in the same order the shell script uses and stop at the first
-//! failure: filename date and lowercase slug, a single H1, the required
+//! Past the checks that decide whether there is anything to validate (the file
+//! exists, is named like an entry and has frontmatter), every check runs, in the
+//! shell script's order, so one run lists everything to fix. [`validate`] returns
+//! the first violation and [`validate_all`] returns them all. The frontmatter is
+//! checked against `assets/schemas/entry-frontmatter.schema.json` with
+//! `pahdk_core::validate`; the rest are listed here: filename date and lowercase
+//! slug, a single H1, the required
 //! sections, code fences carrying a language, headings free of trailing
 //! punctuation, well-formed tags, an H1 ending in the long date, and then the
 //! checks that apply only when the frontmatter asks for them: the
@@ -21,9 +26,18 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use pahdk_core::frontmatter;
+use pahdk_core::validate::{self as pahdk_validate, Issue};
 use regex::Regex;
+use serde::Serialize;
+use serde_json::Value;
 
 use crate::date::Date;
+
+/// The embedded frontmatter schema, shipped with the skill so the skill
+/// documents it and the tool enforces it from one file.
+const SCHEMA: &str =
+    include_str!("../../../journal-entry-creator/assets/schemas/entry-frontmatter.schema.json");
 
 /// The result of validating a file that is subject to the checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +120,39 @@ pub enum Violation {
     Emoji(Vec<usize>),
     /// `jira_ticket` is set but there is no `## Jira Comment Draft` section.
     MissingJiraCommentDraft(String),
+    /// The frontmatter is not valid YAML, or breaks the frontmatter schema.
+    Frontmatter {
+        /// Where: `frontmatter`, or `frontmatter /status` for one field.
+        location: String,
+        /// What is wrong.
+        message: String,
+    },
+}
+
+impl Violation {
+    /// Where in the entry the problem is, for grouping and for `--json`.
+    pub fn location(&self) -> String {
+        match self {
+            Violation::NotFound(_)
+            | Violation::BadFilenameDate(_)
+            | Violation::UppercaseSlug(_) => "filename".to_string(),
+            Violation::MissingFrontmatter
+            | Violation::DateDesync { .. }
+            | Violation::ContinuesFromMissing(_)
+            | Violation::NotLinkedBack { .. }
+            | Violation::ContinuedByMissing(_) => "frontmatter".to_string(),
+            Violation::Frontmatter { location, .. } => location.clone(),
+            _ => "body".to_string(),
+        }
+    }
+
+    /// The violation as the dev-kit's issue type.
+    pub fn to_issue(&self) -> Issue {
+        match self {
+            Violation::Frontmatter { location, message } => Issue::new(location, message),
+            other => Issue::new(other.location(), other.to_string()),
+        }
+    }
 }
 
 impl std::fmt::Display for Violation {
@@ -190,6 +237,7 @@ impl std::fmt::Display for Violation {
                 f,
                 "jira_ticket ({ticket}) is set but there is no '## Jira Comment Draft' section"
             ),
+            Violation::Frontmatter { location, message } => write!(f, "{location}: {message}"),
         }
     }
 }
@@ -215,8 +263,17 @@ const KICKOFF_SECTIONS: [&str; 5] = [
 
 /// Validate the file at `path`, returning the outcome or the first violation.
 pub fn validate(path: &Path) -> Result<Outcome, Violation> {
+    validate_all(path).map_err(|mut found| found.remove(0))
+}
+
+/// Validate the file at `path`, returning the outcome or every violation found.
+///
+/// A file that cannot be read, is not named like an entry or has no frontmatter
+/// yields that one violation, because the other checks have nothing to work on.
+/// Past that point every check runs. The `Err` list is never empty.
+pub fn validate_all(path: &Path) -> Result<Outcome, Vec<Violation>> {
     if !path.is_file() {
-        return Err(Violation::NotFound(path.to_path_buf()));
+        return Err(vec![Violation::NotFound(path.to_path_buf())]);
     }
 
     let path_str = path.to_string_lossy().replace('\\', "/");
@@ -235,22 +292,24 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
 
     let file_date = match filename_date_re().captures(&basename) {
         Some(c) => c.get(1).unwrap().as_str().to_string(),
-        None => return Err(Violation::BadFilenameDate(basename)),
+        None => return Err(vec![Violation::BadFilenameDate(basename)]),
     };
 
     let slug = basename
         .strip_prefix(&format!("{file_date}-"))
         .unwrap_or(&basename);
     if slug.chars().any(|c| c.is_ascii_uppercase()) {
-        return Err(Violation::UppercaseSlug(basename));
+        return Err(vec![Violation::UppercaseSlug(basename)]);
     }
 
     let content =
-        std::fs::read_to_string(path).map_err(|_| Violation::NotFound(path.to_path_buf()))?;
+        std::fs::read_to_string(path).map_err(|_| vec![Violation::NotFound(path.to_path_buf())])?;
 
-    if !has_frontmatter(&content) {
-        return Err(Violation::MissingFrontmatter);
-    }
+    let Some((yaml, _body)) = frontmatter::split(&content) else {
+        return Err(vec![Violation::MissingFrontmatter]);
+    };
+
+    let mut found = frontmatter_violations(yaml);
 
     let scan = Scan::new(&content);
 
@@ -259,36 +318,42 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
         .iter()
         .filter(|l| l.text.starts_with("# "))
         .collect();
-    if h1_lines.len() != 1 {
-        return Err(Violation::H1Count(h1_lines.len()));
-    }
-    let h1_text = h1_lines[0].text.trim_start_matches("# ").trim();
+    let h1_text = if h1_lines.len() == 1 {
+        Some(h1_lines[0].text.trim_start_matches("# ").trim().to_string())
+    } else {
+        found.push(Violation::H1Count(h1_lines.len()));
+        None
+    };
 
     for title in REQUIRED_SECTIONS {
         if !scan.outside.iter().any(|l| l.text == title) {
-            return Err(Violation::MissingSection(title));
+            found.push(Violation::MissingSection(title));
         }
     }
 
     if !scan.bad_fences.is_empty() {
-        return Err(Violation::BareCodeFence(scan.bad_fences.clone()));
+        found.push(Violation::BareCodeFence(scan.bad_fences.clone()));
     }
 
     let bad_headings = scan.heading_punctuation_lines();
     if !bad_headings.is_empty() {
-        return Err(Violation::HeadingPunctuation(bad_headings));
+        found.push(Violation::HeadingPunctuation(bad_headings));
     }
 
-    scan.validate_tags()?;
+    if let Err(violation) = scan.validate_tags() {
+        found.push(violation);
+    }
 
-    let expected = long_date(&file_date);
-    if !h1_text.ends_with(&expected) {
-        return Err(Violation::H1DateMismatch { expected });
+    if let Some(h1_text) = h1_text {
+        let expected = long_date(&file_date);
+        if !h1_text.ends_with(&expected) {
+            found.push(Violation::H1DateMismatch { expected });
+        }
     }
 
     if let Some(fm_date) = frontmatter_field(&content, "date") {
         if !fm_date.is_empty() && fm_date != file_date {
-            return Err(Violation::DateDesync {
+            found.push(Violation::DateDesync {
                 frontmatter: fm_date,
                 filename: file_date,
             });
@@ -302,27 +367,31 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
                 .iter()
                 .any(|l| l.text == "## Proposed Ticket Description")
         {
-            return Err(Violation::MissingProposedTicketDescription(ticket));
+            found.push(Violation::MissingProposedTicketDescription(ticket));
         }
     }
 
-    check_continuation_links(path, &content, &scan)?;
+    found.extend(check_continues_from(path, &content, &scan).err());
+    found.extend(check_continued_by(path, &content).err());
 
     if let Some(ticket) = frontmatter_field(&content, "kickoff_ticket") {
         if !ticket.is_empty() {
             for section in KICKOFF_SECTIONS {
                 if !scan.outside.iter().any(|l| l.text == section) {
-                    return Err(Violation::MissingKickoffSection { ticket, section });
+                    found.push(Violation::MissingKickoffSection {
+                        ticket: ticket.clone(),
+                        section,
+                    });
                 }
             }
         }
     }
 
-    check_executive_summary_placement(&scan)?;
+    found.extend(check_executive_summary_placement(&scan).err());
 
     let emoji_lines = scan.emoji_lines();
     if !emoji_lines.is_empty() {
-        return Err(Violation::Emoji(emoji_lines));
+        found.push(Violation::Emoji(emoji_lines));
     }
 
     if let Some(ticket) = frontmatter_field(&content, "jira_ticket") {
@@ -332,50 +401,110 @@ pub fn validate(path: &Path) -> Result<Outcome, Violation> {
                 .iter()
                 .any(|l| l.text == "## Jira Comment Draft")
         {
-            return Err(Violation::MissingJiraCommentDraft(ticket));
+            found.push(Violation::MissingJiraCommentDraft(ticket));
         }
     }
 
-    Ok(Outcome::Validated)
+    if found.is_empty() {
+        Ok(Outcome::Validated)
+    } else {
+        Err(found)
+    }
 }
 
-/// Reciprocal `continues_from` / `continued_by` links across dated entries.
-///
-/// A no-op for an entry that sets neither field. `continues_from` must name an
-/// existing entry that points back through its own `continued_by`, and the
-/// entry needs a `## Related Entries` section. `continued_by` must name an
-/// existing entry, and the entry needs a `> **Superseded` banner.
-fn check_continuation_links(path: &Path, content: &str, scan: &Scan) -> Result<(), Violation> {
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+/// The frontmatter's own problems: YAML that does not parse, or a document
+/// that breaks the embedded schema.
+fn frontmatter_violations(yaml: &str) -> Vec<Violation> {
+    let instance: Value = match serde_yaml_ng::from_str(yaml) {
+        Ok(value) => value,
+        Err(e) => {
+            return vec![Violation::Frontmatter {
+                location: "frontmatter".to_string(),
+                message: format!("invalid YAML: {e}"),
+            }]
+        }
+    };
+    let schema: Value =
+        serde_json::from_str(SCHEMA).expect("the embedded entry schema is valid JSON");
+    pahdk_validate::schema_issues(&schema, &instance)
+        .expect("the embedded entry schema is a valid JSON Schema")
+        .into_iter()
+        .map(|issue| Violation::Frontmatter {
+            location: format!("frontmatter {}", issue.location)
+                .trim_end()
+                .to_string(),
+            message: issue.message,
+        })
+        .collect()
+}
 
-    if let Some(from) = frontmatter_field(content, "continues_from").filter(|v| !v.is_empty()) {
-        let Some(target) = resolve_file(dir, &from) else {
-            return Err(Violation::ContinuesFromMissing(from));
+/// The result of validating one file, in the shape `validate --json` prints.
+#[derive(Debug, Serialize)]
+pub struct Report {
+    /// The path that was validated.
+    pub file: String,
+    /// `valid`, `skipped` (a template, or outside a `YYYY/` tree) or `invalid`.
+    pub result: &'static str,
+    /// Empty unless the result is `invalid`.
+    pub issues: Vec<Issue>,
+}
+
+impl Report {
+    /// Build the report for `path` from what [`validate_all`] returned.
+    pub fn new(path: &Path, outcome: &Result<Outcome, Vec<Violation>>) -> Self {
+        let (result, issues) = match outcome {
+            Ok(Outcome::Validated) => ("valid", Vec::new()),
+            Ok(Outcome::Skipped) => ("skipped", Vec::new()),
+            Err(found) => ("invalid", found.iter().map(Violation::to_issue).collect()),
         };
-        let target_dir = target.parent().unwrap_or_else(|| Path::new("."));
-        let links_back = std::fs::read_to_string(&target)
-            .ok()
-            .and_then(|t| frontmatter_field(&t, "continued_by"))
-            .filter(|v| !v.is_empty())
-            .and_then(|back| resolve_file(target_dir, &back))
-            .is_some_and(|back| Some(back) == path.canonicalize().ok());
-        if !links_back {
-            return Err(Violation::NotLinkedBack { target: from });
-        }
-        if !scan.outside.iter().any(|l| l.text == "## Related Entries") {
-            return Err(Violation::MissingRelatedEntries);
+        Report {
+            file: path.display().to_string(),
+            result,
+            issues,
         }
     }
+}
 
-    if let Some(by) = frontmatter_field(content, "continued_by").filter(|v| !v.is_empty()) {
-        if resolve_file(dir, &by).is_none() {
-            return Err(Violation::ContinuedByMissing(by));
-        }
-        if !content.lines().any(|l| l.starts_with("> **Superseded")) {
-            return Err(Violation::MissingSupersededBanner);
-        }
+/// `continues_from` must name an existing entry that points back through its
+/// own `continued_by`, and the entry needs a `## Related Entries` section. A
+/// no-op for an entry that does not set it.
+fn check_continues_from(path: &Path, content: &str, scan: &Scan) -> Result<(), Violation> {
+    let Some(from) = frontmatter_field(content, "continues_from").filter(|v| !v.is_empty()) else {
+        return Ok(());
+    };
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let Some(target) = resolve_file(dir, &from) else {
+        return Err(Violation::ContinuesFromMissing(from));
+    };
+    let target_dir = target.parent().unwrap_or_else(|| Path::new("."));
+    let links_back = std::fs::read_to_string(&target)
+        .ok()
+        .and_then(|t| frontmatter_field(&t, "continued_by"))
+        .filter(|v| !v.is_empty())
+        .and_then(|back| resolve_file(target_dir, &back))
+        .is_some_and(|back| Some(back) == path.canonicalize().ok());
+    if !links_back {
+        return Err(Violation::NotLinkedBack { target: from });
     }
+    if !scan.outside.iter().any(|l| l.text == "## Related Entries") {
+        return Err(Violation::MissingRelatedEntries);
+    }
+    Ok(())
+}
 
+/// `continued_by` must name an existing entry, and the entry needs a
+/// `> **Superseded` banner. A no-op for an entry that does not set it.
+fn check_continued_by(path: &Path, content: &str) -> Result<(), Violation> {
+    let Some(by) = frontmatter_field(content, "continued_by").filter(|v| !v.is_empty()) else {
+        return Ok(());
+    };
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    if resolve_file(dir, &by).is_none() {
+        return Err(Violation::ContinuedByMissing(by));
+    }
+    if !content.lines().any(|l| l.starts_with("> **Superseded")) {
+        return Err(Violation::MissingSupersededBanner);
+    }
     Ok(())
 }
 
@@ -525,15 +654,6 @@ fn ends_with_punctuation(line: &str) -> bool {
         line.chars().last(),
         Some('.') | Some(':') | Some(';') | Some('!') | Some('?')
     )
-}
-
-/// True when `content` opens with a `---` fenced YAML frontmatter block.
-fn has_frontmatter(content: &str) -> bool {
-    let mut lines = content.lines();
-    if lines.next().map(str::trim) != Some("---") {
-        return false;
-    }
-    lines.any(|l| l.trim() == "---")
 }
 
 /// Extract the first top-level frontmatter field value, mirroring the shell
@@ -950,5 +1070,214 @@ mod tests {
             .join("\n");
         std::fs::write(&first, without).unwrap();
         assert_eq!(validate(&first), Err(Violation::MissingSupersededBanner));
+    }
+
+    fn violations(path: &Path) -> Vec<Violation> {
+        validate_all(path).expect_err("expected the entry to be invalid")
+    }
+
+    #[test]
+    fn every_problem_is_reported_in_one_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No Compliance section, a bare fence and an emoji: three separate
+        // problems that used to surface one run at a time.
+        let body = GOOD.replace("## Compliance\n\nText.\n\n", "").replace(
+            "Text.\n\n## Tags",
+            "```\nbare\n```\n\nDone \u{2705}\n\n## Tags",
+        );
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let found = violations(&path);
+        assert!(found.contains(&Violation::MissingSection("## Compliance")));
+        assert!(found
+            .iter()
+            .any(|v| matches!(v, Violation::BareCodeFence(_))));
+        assert!(found.iter().any(|v| matches!(v, Violation::Emoji(_))));
+    }
+
+    #[test]
+    fn validate_returns_the_first_of_those_violations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD
+            .replace("## Compliance\n\nText.\n\n", "")
+            .replace("Text.\n\n## Tags", "Done \u{2705}\n\n## Tags");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(
+            validate(&path),
+            Err(Violation::MissingSection("## Compliance"))
+        );
+    }
+
+    #[test]
+    fn a_missing_h1_does_not_hide_other_problems_or_panic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD
+            .replace("# Example - July 22, 2026", "Example without heading")
+            .replace("## Compliance\n\nText.\n\n", "");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let found = violations(&path);
+        assert_eq!(found[0], Violation::H1Count(0));
+        assert!(found.contains(&Violation::MissingSection("## Compliance")));
+        assert!(!found
+            .iter()
+            .any(|v| matches!(v, Violation::H1DateMismatch { .. })));
+    }
+
+    fn frontmatter_messages(found: &[Violation]) -> Vec<String> {
+        found
+            .iter()
+            .filter_map(|v| match v {
+                Violation::Frontmatter { location, message } => {
+                    Some(format!("{location}: {message}"))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn frontmatter_without_a_title_is_rejected_by_the_schema() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("title: \"Example\"\n", "");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let messages = frontmatter_messages(&violations(&path));
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(messages[0].contains("title"), "{messages:?}");
+    }
+
+    #[test]
+    fn frontmatter_without_tags_is_rejected_by_the_schema() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("tags:\n  - journal\n", "");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let messages = frontmatter_messages(&violations(&path));
+        assert!(messages.iter().any(|m| m.contains("tags")), "{messages:?}");
+    }
+
+    #[test]
+    fn an_unknown_status_is_rejected_at_its_location() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("date: 2026-07-22\n", "date: 2026-07-22\nstatus: finished\n");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let messages = frontmatter_messages(&violations(&path));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.starts_with("frontmatter /status")),
+            "{messages:?}"
+        );
+    }
+
+    #[test]
+    fn the_three_documented_statuses_validate() {
+        let tmp = tempfile::tempdir().unwrap();
+        for status in ["draft", "published", "superseded"] {
+            let body = GOOD.replace(
+                "date: 2026-07-22\n",
+                &format!("date: 2026-07-22\nstatus: {status}\n"),
+            );
+            let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+            assert_eq!(validate(&path), Ok(Outcome::Validated), "status {status}");
+        }
+    }
+
+    #[test]
+    fn a_date_that_is_not_iso_is_rejected_by_the_schema() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("date: 2026-07-22", "date: July 22");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let messages = frontmatter_messages(&violations(&path));
+        assert!(
+            messages.iter().any(|m| m.starts_with("frontmatter /date")),
+            "{messages:?}"
+        );
+    }
+
+    #[test]
+    fn extra_frontmatter_fields_are_allowed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("date: 2026-07-22\n", "date: 2026-07-22\nteam: platform\n");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn frontmatter_that_is_not_yaml_is_reported_not_panicked_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = GOOD.replace("title: \"Example\"", "title: [unclosed");
+        let path = write(tmp.path(), "2026/07/2026-07-22-example.md", &body);
+        let messages = frontmatter_messages(&violations(&path));
+        assert!(messages[0].contains("invalid YAML"), "{messages:?}");
+    }
+
+    #[test]
+    fn windows_line_endings_validate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write(
+            tmp.path(),
+            "2026/07/2026-07-22-example.md",
+            &GOOD.replace('\n', "\r\n"),
+        );
+        assert_eq!(validate(&path), Ok(Outcome::Validated));
+    }
+
+    #[test]
+    fn the_report_names_the_result_and_each_issue() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ok = write(tmp.path(), "2026/07/2026-07-22-example.md", GOOD);
+        let report = Report::new(&ok, &validate_all(&ok));
+        assert_eq!((report.result, report.issues.len()), ("valid", 0));
+
+        let skipped = write(tmp.path(), "notes/2026-07-22-example.md", GOOD);
+        let report = Report::new(&skipped, &validate_all(&skipped));
+        assert_eq!(report.result, "skipped");
+
+        let bad = write(
+            tmp.path(),
+            "2026/07/2026-07-23-bad.md",
+            &GOOD.replace("## Compliance\n\nText.\n\n", ""),
+        );
+        let report = Report::new(&bad, &validate_all(&bad));
+        assert_eq!(report.result, "invalid");
+        assert!(report
+            .issues
+            .iter()
+            .all(|i| i.location == "body" || i.location.starts_with("frontmatter")));
+        assert!(!report.issues.is_empty());
+    }
+
+    /// Whatever `new` writes must pass `validate`, for every entry type. This
+    /// keeps the schema, the required sections and the generator in step.
+    #[test]
+    fn every_entry_type_the_tool_creates_validates() {
+        use crate::date::{Date, Timestamp};
+        use crate::entry::{EntrySpec, EntryType};
+
+        let tmp = tempfile::tempdir().unwrap();
+        for entry_type in [
+            EntryType::Journal,
+            EntryType::Troubleshooting,
+            EntryType::Learning,
+            EntryType::ArticleSummary,
+            EntryType::TicketRefinement,
+            EntryType::TicketKickoff,
+        ] {
+            let spec = EntrySpec {
+                entry_type,
+                title: "Example Title".to_string(),
+                author: "Author".to_string(),
+                timestamp: Timestamp::fixed(Date::new(2026, 7, 22), 14, 30),
+                ticket: Some("TICKET-1".to_string()),
+                source: Some("https://example.com/article".to_string()),
+            };
+            let path = spec
+                .create(&tmp.path().join(format!("{entry_type:?}")))
+                .unwrap();
+            assert_eq!(
+                validate_all(&path),
+                Ok(Outcome::Validated),
+                "{entry_type:?} entry at {}",
+                path.display()
+            );
+        }
     }
 }
