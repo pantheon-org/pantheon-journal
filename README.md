@@ -33,8 +33,8 @@ cargo test --workspace --locked
 
 The shared helpers come from
 [pantheon-agentic-harness-dev-kit](https://github.com/pantheon-org/pantheon-agentic-harness-dev-kit)
-(`pahdk-core`, `pahdk-install`), pinned to a git tag until they are published to crates.io. The
-skill in `journal-entry-creator/` is embedded into the binary at build time and audited in CI with
+(`pahdk-core`, `pahdk-install`), pinned to a dev-kit commit until a tag includes `validate`, and then to that tag until they are published to crates.io. The
+skill in `skills/journal-entry-creator/` is embedded into the binary at build time and audited in CI with
 [pantheon-skill-auditor](https://github.com/pantheon-org/pantheon-skill-auditor).
 
 The tool keeps its state under `$XDG_DATA_HOME/tekhne/journal` (or `~/.local/share/tekhne/journal`),
@@ -43,5 +43,5 @@ the path it used before it moved here, so existing data stays where it is.
 ## History
 
 Extracted from [pantheon-org/tekhne](https://github.com/pantheon-org/tekhne) with `git filter-repo`
-(`crates/journal` and `skills/documentation/journal-entry-creator`, now `journal-entry-creator/`).
+(`crates/journal` and `skills/documentation/journal-entry-creator`, now `skills/journal-entry-creator/`).
 Commit messages keep their original `#NNN` references, which point at tekhne pull requests.

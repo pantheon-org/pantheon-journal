@@ -100,7 +100,7 @@ structure:
       Pulled directly from the ticket (verbatim or lightly reformatted for readability — do not
       paraphrase away specifics). If the ticket only has one of the two (CoS or AC), include that one
       and note the other is absent. REQUIRED whenever frontmatter sets kickoff_ticket (enforced by
-      validate-journal-entry.sh).
+      pantheon-journal validate).
     example: |
       **Conditions of Satisfaction:**
 
@@ -118,7 +118,7 @@ structure:
       - API stub (`POST /example` -> entrypoint handler)
       - CI/CD pipeline following the reference service pattern
     validation:
-      - "Required if frontmatter sets kickoff_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets kickoff_ticket (checked by pantheon-journal validate)"
 
   # Open Questions & Gaps (enforced by validator when kickoff_ticket is set)
   - section: open_questions
@@ -151,7 +151,7 @@ structure:
       - Ticket does not say whether the reference service's existing alert topic should be reused or a
         new one created for this service — raise with the ticket owner before wiring alarms.
     validation:
-      - "Required if frontmatter sets kickoff_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets kickoff_ticket (checked by pantheon-journal validate)"
       - "Must not be silently blank: state 'None identified' explicitly when there is nothing open"
 
   # Supporting Information (enforced by validator when kickoff_ticket is set)
@@ -169,7 +169,7 @@ structure:
       - Ticket: [TICKET-123](https://tracker.example.com/browse/TICKET-123)
       - Reference repo: [example-service](https://example.com/org/example-service)
     validation:
-      - "Required if frontmatter sets kickoff_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets kickoff_ticket (checked by pantheon-journal validate)"
       - "Every reference must be a hyperlink, not a bare key/path"
 
   # Work Checklist (enforced by validator when kickoff_ticket is set)
@@ -200,7 +200,7 @@ structure:
       - [ ] Verify the dead-letter-depth alarm fires
       - [ ] Verify the CI pipeline runs green
     validation:
-      - "Required if frontmatter sets kickoff_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets kickoff_ticket (checked by pantheon-journal validate)"
       - "Items must be checkbox list items (- [ ]) so progress is trackable"
 
   # Proof of Work Plan (enforced by validator when kickoff_ticket is set)
@@ -224,7 +224,7 @@ structure:
       | Dead-letter-depth alarm fires | Alarm state transition to ALARM after a synthetic message, then back to OK | Alarm history screenshot |
       | CI pipeline runs and passes | Green pipeline run link | Pipeline URL + status screenshot |
     validation:
-      - "Required if frontmatter sets kickoff_ticket (checked by validate-journal-entry.sh)"
+      - "Required if frontmatter sets kickoff_ticket (checked by pantheon-journal validate)"
       - "Must cover every CoS/AC item from the Conditions of Satisfaction & Acceptance Criteria section"
       - "This is a PLAN — the evidence itself is collected and attached in a later, completion-focused entry, not fabricated here"
 
@@ -255,7 +255,7 @@ structure:
     required: true
     description: "Any additional links, related entries, or context not already captured in Supporting Information"
 
-  # Compliance checklist (validator hard-requires this: validate-journal-entry.sh exits 8 if absent)
+  # Compliance checklist (validator hard-requires this: pantheon-journal validate fails if absent)
   - section: compliance
     level: 2
     heading: "## Compliance"
@@ -275,7 +275,7 @@ structure:
       - [x] No credentials, tokens, secrets, or account/org identifiers included verbatim
       - [x] Any code or ticket changes made during this session are disclosed
       - [x] No proprietary third-party source code was inspected or reproduced without confirming license terms
-    validation: "Must be titled exactly '## Compliance' (validate-journal-entry.sh returns exit code 8 if missing)"
+    validation: "Must be titled exactly '## Compliance' (pantheon-journal validate fails if it is missing)"
 
   # Tags (at end of document)
   - section: tags
