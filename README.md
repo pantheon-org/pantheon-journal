@@ -13,6 +13,16 @@ Releases ship a shell installer and tarballs for macOS and Linux (arm64 and x86_
 repository has its own release. Until then the latest is
 [tekhne `tool/pantheon-journal-v0.2.5`](https://github.com/pantheon-org/tekhne/releases/tag/tool%2Fpantheon-journal-v0.2.5).
 
+## Shell completion
+
+`pantheon-journal completion <shell>` prints a completion script for `bash`, `zsh`, `fish`, `powershell` or
+`elvish`.
+
+```bash
+pantheon-journal completion zsh > "${fpath[1]}/_pantheon-journal"
+pantheon-journal completion bash > /etc/bash_completion.d/pantheon-journal
+```
+
 ## Development
 
 ```bash

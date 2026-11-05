@@ -9,7 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::process;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::{generate, Shell};
 use journal::archive_media::{self, ArchiveMediaArgs as ArchiveMediaCoreArgs};
 use journal::backfill;
 use journal::date::Timestamp;
@@ -29,6 +30,7 @@ use pahdk_install::env::Environment;
 use pahdk_install::install::InstallMode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const NAME: &str = env!("CARGO_PKG_NAME");
 
 #[derive(Parser)]
 #[command(
@@ -66,6 +68,11 @@ enum Command {
     /// Audit status fields across a consuming repo's own follow-ups, plans,
     /// merge-queue entries, and superseded journal-entry pairs.
     Status(StatusArgs),
+    /// Print a shell completion script for `pantheon-journal`.
+    Completion {
+        /// The shell to generate for.
+        shell: Shell,
+    },
     /// Manage the bundled companion skill.
     Skill {
         #[command(subcommand)]
@@ -356,6 +363,11 @@ fn main() {
         Command::Backfill(args) => run_backfill(args),
         Command::ArchiveMedia(args) => run_archive_media(args),
         Command::Status(args) => run_status(args),
+        Command::Completion { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, NAME, &mut std::io::stdout());
+            Ok(())
+        }
         Command::Skill {
             action: SkillAction::Install(args),
         } => run_skill_install(args),
@@ -1094,4 +1106,59 @@ fn print_uninstall_report(
 
     let verb = if opts.dry_run { "planned" } else { "removed" };
     println!("\n{removed} {verb}, {absent} already absent, {failed} failed.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cli_definition_is_internally_consistent() {
+        // clap's own audit: duplicate flags, conflicting names, bad defaults.
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn completion_generates_for_every_supported_shell() {
+        for shell in [
+            Shell::Bash,
+            Shell::Zsh,
+            Shell::Fish,
+            Shell::PowerShell,
+            Shell::Elvish,
+        ] {
+            let mut out = Vec::new();
+            generate(shell, &mut Cli::command(), NAME, &mut out);
+            let script = String::from_utf8(out).expect("completion scripts are UTF-8");
+            assert!(
+                script.contains(NAME),
+                "{shell} script should name the binary"
+            );
+        }
+    }
+
+    #[test]
+    fn the_completion_script_covers_every_subcommand() {
+        let mut out = Vec::new();
+        generate(Shell::Bash, &mut Cli::command(), NAME, &mut out);
+        let script = String::from_utf8(out).expect("utf-8");
+
+        for visible in [
+            "new",
+            "validate",
+            "lint",
+            "index",
+            "kb-index",
+            "backfill",
+            "archive-media",
+            "status",
+            "skill",
+            "taxonomy",
+        ] {
+            assert!(
+                script.contains(visible),
+                "bash completion should offer {visible}"
+            );
+        }
+    }
 }
