@@ -33,7 +33,7 @@ cargo test --workspace --locked
 
 The shared helpers come from
 [pantheon-agentic-harness-dev-kit](https://github.com/pantheon-org/pantheon-agentic-harness-dev-kit)
-(`pahdk-core`, `pahdk-install`), pinned to a dev-kit commit until a tag includes `validate`, and then to that tag until they are published to crates.io. The
+(`pahdk-core`, `pahdk-install`), pinned to a git tag until they are published to crates.io. The
 skill in `skills/journal-entry-creator/` is embedded into the binary at build time and audited in CI with
 [pantheon-skill-auditor](https://github.com/pantheon-org/pantheon-skill-auditor).
 

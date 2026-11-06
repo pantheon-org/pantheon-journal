@@ -39,8 +39,7 @@ the "passed" counts.
   Do not skip them.
 - Markdown is linted by rumdl with `.rumdl.toml`. Shell scripts must pass shellcheck.
 - The Rust toolchain version is set in `rust-toolchain.toml`, `mise.toml` and `rust-ci.yml`. Change all three together.
-- The `pahdk-*` dependencies are pinned in the root `Cargo.toml`, to a `rev` of the dev-kit's `main` until a tag includes
-  `validate`; move them to the tag then. Both must share one pin.
+- The `pahdk-*` dependencies are pinned in the root `Cargo.toml`, to a git tag. Both must share one pin.
 - A workflow `run:` block holds at most 15 lines of code; longer logic goes in a script under `.github/scripts/`.
 - Keep the skill's documented behaviour and the CLI in step: `references/compliance.md` and the templates describe the
   rules `src/validate.rs` enforces. The frontmatter rules live in `assets/schemas/entry-frontmatter.schema.json`,
